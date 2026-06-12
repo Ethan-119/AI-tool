@@ -37,10 +37,30 @@ function drawCommand(op) {
     elements.value.pop()
   } else if (op.type === 'clear') {
     elements.value = []
+  } else if (op.type === 'modify') {
+    // targetIndex 未指定时默认改最后一个
+    const idx = op.targetIndex >= 0 ? op.targetIndex : elements.value.length - 1
+    const el = elements.value[idx]
+    if (el) {
+      // 只改 color 时同步更新填充色和描边色，否则改了看不见
+      if (op.color) {
+        el.color = op.color
+        if (!op.fillColor) el.fillColor = op.color
+        if (!op.strokeColor) el.strokeColor = op.color
+      }
+      if (op.fillColor) el.fillColor = op.fillColor
+      if (op.strokeColor) el.strokeColor = op.strokeColor
+    }
   } else {
     elements.value.push({ ...op, id: Date.now() })
   }
   redrawAll()
+}
+
+function getElementsSummary() {
+  return elements.value.map((el, i) =>
+    `[${i}] ${el.type} x=${el.x?.toFixed(0)} y=${el.y?.toFixed(0)} color=${el.color} fillColor=${el.fillColor || '无'}`
+  ).join('\n')
 }
 
 function drawImage(imgData) {
@@ -143,7 +163,7 @@ function fillAndStroke(el, drawPath) {
   }
 }
 
-defineExpose({ drawCommand, drawImage })
+defineExpose({ drawCommand, drawImage, getElementsSummary })
 </script>
 
 <style scoped>
