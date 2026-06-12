@@ -24,23 +24,97 @@ const statusText = ref('')
 const logs = ref([])
 
 function handleAudioReady(wavBlob) {
-  const sizeKB = (wavBlob.size / 1024).toFixed(1)
-  logs.value.unshift(`录音完成 ${sizeKB}KB ${wavBlob.type}`)
-  statusText.value = `已录制 ${sizeKB}KB，等待后端接口...`
-
-
-  // [临时测试] 下载 WAV 到浏览器默认下载目录，用于人工验证录音效果
-  // 正式上线前删除此段 —— 生产环境 WAV Blob 只走内存直接 POST，不落盘
-  //
+  // [临时测试] 下载 WAV 验证录音效果，正式上线前删除
   const url = URL.createObjectURL(wavBlob)
   const a = document.createElement('a')
-  a.href = url
-  a.download = `recording-${Date.now()}.wav`
-  a.click()
+  a.href = url; a.download = `recording-${Date.now()}.wav`; a.click()
   URL.revokeObjectURL(url)
-  //
 
-  // TODO: POST /api/draw/voice → SSE 流式接收绘图结果
+  // POST 音频到后端 + SSE 流式接收结果
+  sendToBackend(wavBlob)
+}
+
+async function sendToBackend(wavBlob) {
+  const sizeKB = (wavBlob.size / 1024).toFixed(1)
+  logs.value.unshift(`发送中 ${sizeKB}KB...`)
+  statusText.value = '正在识别语音...'
+
+  const form = new FormData()
+  form.append('audio', wavBlob, 'recording.wav')
+
+  try {
+    const res = await fetch('/api/draw/voice', { method: 'POST', body: form })
+    if (!res.ok) { throw new Error('HTTP ' + res.status) }
+
+    // 手动解析 SSE 流（POST 不能用 EventSource）
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      // 按双换行分割 SSE 事件
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop()  // 最后一个可能不完整，留到下次
+
+      for (const raw of parts) {
+        const event = parseSSE(raw)
+        if (!event) continue
+        switch (event.name) {
+          case 'text':
+            statusText.value = `识别: ${event.data.text}`
+            logs.value.unshift(`📝 ${event.data.text}`)
+            break
+          case 'command':
+            logs.value.unshift(`🎨 ${event.data.type}`)
+            drawCommand(event.data)
+            break
+          case 'image':
+            logs.value.unshift(`🖼 图像生成完成`)
+            drawImage(event.data)
+            break
+          case 'progress':
+            statusText.value = event.data.message || '生成中...'
+            break
+          case 'error':
+            statusText.value = event.data.message || '出错了'
+            logs.value.unshift(`❌ ${event.data.message}`)
+            break
+          case 'done':
+            statusText.value = `完成 (第${event.data.step}步)`
+            break
+        }
+      }
+    }
+  } catch (e) {
+    statusText.value = '请求失败'
+    logs.value.unshift(`❌ ${e.message}`)
+  }
+}
+
+function parseSSE(raw) {
+  const lines = raw.split('\n')
+  let name = '', data = ''
+  for (const line of lines) {
+    if (line.startsWith('event:')) name = line.slice(6).trim()
+    else if (line.startsWith('data:')) data = line.slice(5).trim()
+  }
+  if (!data) return null
+  try { return { name: name || 'message', data: JSON.parse(data) } }
+  catch { return null }
+}
+
+function drawCommand(op) {
+  // TODO: Canvas 渲染几何图形
+  console.log('draw:', op)
+}
+
+function drawImage(imgData) {
+  // TODO: Canvas 贴图
+  console.log('image:', imgData)
 }
 </script>
 
