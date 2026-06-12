@@ -22,18 +22,18 @@ public class TemplateStrategy implements IntentStrategy {
     static final Map<String, List<SemanticOp>> TEMPLATES = Map.of(
         "房子", List.of(
             // 墙壁
-            new SemanticOp("rect", "center", "center", "large", null, null, null, true, false, null, null),
+            new SemanticOp("rect", "center", "center", "large", null, null, null, true, false, null, null, null),
             // 屋顶
-            new SemanticOp("triangle", "center", "top", null, "red", null, null, true, false, null, null),
+            new SemanticOp("triangle", "center", "top", null, "red", null, null, true, false, null, null, null),
             // 门
-            new SemanticOp("rect", "center", "bottom", "small", "brown", null, null, true, false, null, null)
+            new SemanticOp("rect", "center", "bottom", "small", "brown", null, null, true, false, null, null, null)
         ),
         "太阳", List.of(
-            new SemanticOp("circle", "right", "top", "medium", "yellow", null, null, true, false, null, null)
+            new SemanticOp("circle", "right", "top", "medium", "yellow", null, null, true, false, null, null, null)
         ),
         "树", List.of(
-            new SemanticOp("rect", "center", "bottom", null, "brown", null, null, true, false, null, null),
-            new SemanticOp("circle", "center", "top", "large", "green", null, null, true, false, null, null)
+            new SemanticOp("rect", "center", "bottom", null, "brown", null, null, true, false, null, null, null),
+            new SemanticOp("circle", "center", "top", "large", "green", null, null, true, false, null, null, null)
         )
     );
 

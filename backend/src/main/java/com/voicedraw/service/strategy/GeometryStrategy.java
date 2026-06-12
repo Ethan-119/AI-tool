@@ -78,14 +78,14 @@ public class GeometryStrategy implements IntentStrategy {
             String sc = op.stroke() ? mapColor(op.strokeColor() != null ? op.strokeColor() : op.color()) : c;
 
             result.add(switch (shape) {
-                case "circle"  -> new DrawingOp("circle",  x, y, size, size, null, fc, sc, 2, null, null);
-                case "rect"    -> new DrawingOp("rect",    x - size/2, y - size/2, size, size, null, fc, sc, 2, null, null);
-                case "line"    -> new DrawingOp("line",    x, y, x + size, y, null, null, sc, 2, null, null);
-                case "triangle"-> new DrawingOp("triangle",x, y - size/2, size, size, null, fc, sc, 2, null, null);
-                case "ellipse" -> new DrawingOp("ellipse", x, y, size, size * 0.7, null, fc, sc, 2, null, null);
-                case "undo"    -> new DrawingOp("undo",  0, 0, 0, 0, null, null, null, 0, null, null);
-                case "clear"   -> new DrawingOp("clear", 0, 0, 0, 0, null, null, null, 0, null, null);
-                default        -> new DrawingOp("circle", x, y, size, size, null, fc, sc, 2, null, null);
+                case "circle"  -> new DrawingOp("circle",  x, y, size, size, null, fc, sc, 2, null, null, -1);
+                case "rect"    -> new DrawingOp("rect",    x - size/2, y - size/2, size, size, null, fc, sc, 2, null, null, -1);
+                case "line"    -> new DrawingOp("line",    x, y, x + size, y, null, null, sc, 2, null, null, -1);
+                case "triangle"-> new DrawingOp("triangle",x, y - size/2, size, size, null, fc, sc, 2, null, null, -1);
+                case "ellipse" -> new DrawingOp("ellipse", x, y, size, size * 0.7, null, fc, sc, 2, null, null, -1);
+                case "undo"    -> new DrawingOp("undo",  0, 0, 0, 0, null, null, null, 0, null, null, -1);
+                case "clear"   -> new DrawingOp("clear", 0, 0, 0, 0, null, null, null, 0, null, null, -1);
+                default        -> new DrawingOp("circle", x, y, size, size, null, fc, sc, 2, null, null, -1);
             });
         }
         return result;

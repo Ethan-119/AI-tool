@@ -9,8 +9,9 @@ public class IntentStrategyFactory {
 
     private final Map<String, IntentStrategy> strategies;
 
-    public IntentStrategyFactory(GeometryStrategy gs, TemplateStrategy ts, ImageGenStrategy is) {
-        strategies = Map.of(gs.type(), gs, ts.type(), ts, is.type(), is);
+    public IntentStrategyFactory(GeometryStrategy gs, TemplateStrategy ts,
+                                   ImageGenStrategy is, ModifyStrategy ms) {
+        strategies = Map.of(gs.type(), gs, ts.type(), ts, is.type(), is, ms.type(), ms);
     }
 
     public IntentStrategy get(String type) {
