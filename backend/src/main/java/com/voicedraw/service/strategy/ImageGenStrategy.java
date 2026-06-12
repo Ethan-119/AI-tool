@@ -25,7 +25,7 @@ public class ImageGenStrategy implements IntentStrategy {
         for (SemanticOp op : ops) {
             String imageUrl = generate(buildPrompt(op));
             if (imageUrl != null)
-                return List.of(new DrawingOp("image", 0, 0, 512, 512, null, null, null, 0, null, imageUrl));
+                return List.of(new DrawingOp("image", 0, 0, 512, 512, null, null, null, 0, null, imageUrl, -1));
         }
         return Collections.emptyList();
     }
