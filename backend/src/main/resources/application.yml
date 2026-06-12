@@ -26,26 +26,20 @@ spring:
       password: 123456
       database: 0
 
-  # Spring AI - Alibaba DashScope (通义千问)
-  ai:
-    dashscope:
-      api-key: ${DASHSCOPE_API_KEY}
-      chat:
-        options:
-          model: qwen-plus
-          temperature: 0.1
-      image:
-        options:
-          model: wanx-v1
-          size: 1024x1024
-
-# 语音绘图 - 自定义配置
+# 语音绘图 — DashScope 三模态配置
 voice-draw:
+  api-key: ${DASHSCOPE_API_KEY}
+  llm:
+    model: qwen-plus
+    temperature: 0.1
+  image:
+    model: wanx-v1
+    size: 1024*1024
   asr:
-    model: paraformer-v1         # DashScope 语音识别模型
-    sample-rate: 16000           # 前端录音采样率
-    format: wav                  # 音频格式
-    language: zh                 # 中文识别
+    model: paraformer-realtime-v1
+    sample-rate: 16000
+    format: wav
+    language: zh
 
 # MyBatis-Plus
 mybatis-plus:
@@ -63,4 +57,3 @@ mybatis-plus:
 logging:
   level:
     com.voicedraw: DEBUG
-    org.springframework.ai: DEBUG
