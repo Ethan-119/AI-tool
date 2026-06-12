@@ -23,6 +23,7 @@ import DrawingCanvas from './components/DrawingCanvas.vue'
 const drawCanvas = ref(null)
 const statusText = ref('')
 const logs = ref([])
+const sessionId = ref(sessionStorage.getItem('voiceDrawSessionId') || '')
 
 function handleAudioReady(wavBlob) {
   sendToBackend(wavBlob)
@@ -35,6 +36,9 @@ async function sendToBackend(wavBlob) {
 
   const form = new FormData()
   form.append('audio', wavBlob, 'recording.wav')
+  if (sessionId.value) form.append('sessionId', sessionId.value)
+  const ctx = drawCanvas.value?.getElementsSummary()
+  if (ctx) form.append('canvasState', ctx)
 
   try {
     const res = await fetch('/api/draw/voice', { method: 'POST', body: form })
@@ -79,6 +83,10 @@ async function sendToBackend(wavBlob) {
             break
           case 'done':
             statusText.value = `完成 (第${event.data.step}步)`
+            if (event.data.sessionId) {
+              sessionId.value = event.data.sessionId
+              sessionStorage.setItem('voiceDrawSessionId', event.data.sessionId)
+            }
             break
         }
       }
