@@ -1,0 +1,59 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: voice-draw
+
+  # 文件上传 (录音文件)
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+  # MySQL
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/voice_draw?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&createDatabaseIfNotExist=true
+    username: root
+    password: 123456
+
+  # Redis
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: 123456
+      database: 0
+
+# 语音绘图 — DashScope 三模态配置
+voice-draw:
+  api-key: ${DASHSCOPE_API_KEY}
+  llm:
+    model: qwen-plus
+    temperature: 0.1
+  image:
+    model: wanx-v1
+    size: 1024*1024
+  asr:
+    model: paraformer-realtime-v1
+    sample-rate: 16000
+    format: wav
+    language: zh
+
+# MyBatis-Plus
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# Logging
+logging:
+  level:
+    com.voicedraw: DEBUG
