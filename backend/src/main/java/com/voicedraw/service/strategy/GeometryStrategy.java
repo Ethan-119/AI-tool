@@ -83,7 +83,9 @@ public class GeometryStrategy implements IntentStrategy {
                 case "line"    -> new DrawingOp("line",    x, y, x + size, y, null, null, sc, 2, null, null);
                 case "triangle"-> new DrawingOp("triangle",x, y - size/2, size, size, null, fc, sc, 2, null, null);
                 case "ellipse" -> new DrawingOp("ellipse", x, y, size, size * 0.7, null, fc, sc, 2, null, null);
-                default        -> new DrawingOp("circle",  x, y, size, size, null, fc, sc, 2, null, null);
+                case "undo"    -> new DrawingOp("undo",  0, 0, 0, 0, null, null, null, 0, null, null);
+                case "clear"   -> new DrawingOp("clear", 0, 0, 0, 0, null, null, null, 0, null, null);
+                default        -> new DrawingOp("circle", x, y, size, size, null, fc, sc, 2, null, null);
             });
         }
         return result;

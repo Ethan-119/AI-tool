@@ -27,7 +27,7 @@ public class CommandParserService {
           "understood": true,
           "type": "geometry",
           "operations": [{
-            "shape": "circle|rect|line|triangle|ellipse",
+            "shape": "circle|rect|line|triangle|ellipse|undo|clear",
             "x": "left|center|right",
             "y": "top|middle|bottom",
             "size": "small|medium|large",
@@ -43,7 +43,7 @@ public class CommandParserService {
         - size: small=小, medium=中, large=大
         - 如果用户说"然后/接着/再/也"，拆成多个 operations
         - 如果完全无法理解，设 understood=false，clarification 写追问内容
-        - 如果用户说"撤销"或"清空"或"全删"，用 type="geometry" + shape="undo" 或 shape="clear"
+        - 如果用户说"撤销"或"清空"或"全删"，shape 用 "undo" 或 "clear"，其他字段可省略
         """;
 
     public CommandParserService(VoiceDrawProperties props) { this.props = props; }
@@ -78,7 +78,7 @@ public class CommandParserService {
         if (text.contains("清空") || text.contains("全删")) shape = "clear";
         return new IntentResult(true, null, type, List.of(new SemanticOp(shape, x, y, size, color, null, null, true, false, null, null)));
     }
-    private String detectShape(String t) { if (t.contains("圆")) return "circle"; if (t.contains("方") || t.contains("矩")) return "rect"; if (t.contains("三角")) return "triangle"; if (t.contains("线")) return "line"; if (t.contains("椭圆")) return "ellipse"; return "circle"; }
+    private String detectShape(String t) { if (t.contains("椭圆")) return "ellipse"; if (t.contains("圆")) return "circle"; if (t.contains("方") || t.contains("矩")) return "rect"; if (t.contains("三角")) return "triangle"; if (t.contains("线")) return "line"; return "circle"; }
     private String detectColor(String t) { for (String c : new String[]{"红","蓝","绿","黄","黑","白","橙","紫","粉","灰","棕","青","red","blue","green","yellow","black","white","orange","purple","pink","gray","brown","cyan"}) if (t.contains(c)) return c; return null; }
     private String detectX(String t) { if (t.contains("左")) return "left"; if (t.contains("右")) return "right"; return "center"; }
     private String detectY(String t) { if (t.contains("上") || t.contains("顶")) return "top"; if (t.contains("下") || t.contains("底")) return "bottom"; return "middle"; }

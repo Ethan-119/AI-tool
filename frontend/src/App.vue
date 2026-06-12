@@ -2,7 +2,7 @@
   <div class="app-shell">
     <div class="main-area">
       <div class="canvas-panel">
-        <canvas ref="canvasRef" class="draw-canvas"></canvas>
+        <DrawingCanvas ref="drawCanvas" />
       </div>
       <div class="log-panel">
         <div v-if="statusText" class="status">{{ statusText }}</div>
@@ -16,21 +16,15 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref } from 'vue'
 import VoiceButton from './components/VoiceButton.vue'
+import DrawingCanvas from './components/DrawingCanvas.vue'
 
-const canvasRef = ref(null)
+const drawCanvas = ref(null)
 const statusText = ref('')
 const logs = ref([])
 
 function handleAudioReady(wavBlob) {
-  // [临时测试] 下载 WAV 验证录音效果，正式上线前删除
-  const url = URL.createObjectURL(wavBlob)
-  const a = document.createElement('a')
-  a.href = url; a.download = `recording-${Date.now()}.wav`; a.click()
-  URL.revokeObjectURL(url)
-
-  // POST 音频到后端 + SSE 流式接收结果
   sendToBackend(wavBlob)
 }
 
@@ -108,13 +102,11 @@ function parseSSE(raw) {
 }
 
 function drawCommand(op) {
-  // TODO: Canvas 渲染几何图形
-  console.log('draw:', op)
+  drawCanvas.value?.drawCommand(op)
 }
 
 function drawImage(imgData) {
-  // TODO: Canvas 贴图
-  console.log('image:', imgData)
+  drawCanvas.value?.drawImage(imgData)
 }
 </script>
 
@@ -135,12 +127,6 @@ function drawImage(imgData) {
 .canvas-panel {
   flex: 1; display: flex; align-items: center; justify-content: center;
   background: #1a1a2e;
-}
-.draw-canvas {
-  width: 90%; height: 90%;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
 }
 .log-panel {
   width: 260px;
