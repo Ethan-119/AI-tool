@@ -140,22 +140,41 @@ public class CanvasStateService {
     public List<SemanticOp> fixModifyOps(List<SemanticOp> modOps, List<ElementState> elements, String userText) {
         if (elements.isEmpty()) return modOps;
 
+        // 方向词出现时 → 强制走方向匹配，无视 LLM 填的 targetIndex
+        String dirWord = detectDirection(userText);
+        boolean hasDirRef = dirWord != null;
+
         List<SemanticOp> fixed = new ArrayList<>();
         for (SemanticOp op : modOps) {
-            if (op.targetIndex() != null) {
+            if (hasDirRef) {
+                List<Integer> matches = matchTargets(elements, userText);
+                for (int mi : matches) {
+                    fixed.add(copyWithIndex(op, mi));
+                }
+            } else if (op.targetIndex() != null) {
                 int idx = op.targetIndex();
                 if (idx >= 0 && idx < elements.size()) {
-                    // LLM 填的 targetIndex 有效，直接使用
+                    // 用户文本有明确筛选条件时才交叉验证，避免每次调 matchTargets 增加延迟
+                    boolean hasCriteria = detectShape(userText) != null
+                        || hasPositionKeyword(userText)
+                        || hasColorKeyword(userText);
+                    if (hasCriteria) {
+                        List<Integer> matches = matchTargets(elements, userText);
+                        if (!matches.isEmpty() && !matches.contains(idx)) {
+                            for (int mi : matches) {
+                                fixed.add(copyWithIndex(op, mi));
+                            }
+                            continue;
+                        }
+                    }
                     fixed.add(op);
                 } else {
-                    // targetIndex 越界，用匹配修正
                     List<Integer> matches = matchTargets(elements, userText);
                     for (int mi : matches) {
                         fixed.add(copyWithIndex(op, mi));
                     }
                 }
             } else {
-                // 未填 targetIndex，多维度匹配
                 List<Integer> matches = matchTargets(elements, userText);
                 for (int mi : matches) {
                     fixed.add(copyWithIndex(op, mi));
@@ -193,20 +212,24 @@ public class CanvasStateService {
             if (userText.contains(sk)) { sizeKey = sk; break; }
         }
 
-        // 指代词无具体条件 → 兜底取最后一个（LLM 应优先根据对话上下文填写 targetIndex）
+        // 指代词/批量 → 颜色和大小是修改目标值，不是搜索条件
         boolean hasDemo = userText.contains("这个") || userText.contains("那个") || userText.contains("它");
-        if (hasDemo && shapeType == null && posKey == null && colorKey == null && sizeKey == null) {
-            return List.of(elements.size() - 1);
-        }
-
-        // 是否批量
         boolean isBatch = false;
         for (String bk : BATCH_KEYS) {
             if (userText.contains(bk)) { isBatch = true; break; }
         }
+        if (hasDemo || (isBatch && shapeType == null && posKey == null)) {
+            colorKey = null;
+            sizeKey = null;
+        }
+
+        // 指代词无其他条件 → 最后一个
+        if (hasDemo && shapeType == null && posKey == null) {
+            return List.of(elements.size() - 1);
+        }
 
         // 批量无具体条件 → 全选
-        if (isBatch && shapeType == null && posKey == null && colorKey == null && sizeKey == null) {
+        if (isBatch && shapeType == null && posKey == null) {
             List<Integer> all = new ArrayList<>();
             for (int i = 0; i < elements.size(); i++) all.add(i);
             return all;
@@ -285,7 +308,10 @@ public class CanvasStateService {
         for (int i = 0; i < elements.size(); i++) {
             if (type.equals(elements.get(i).type())) candidates.add(i);
         }
-        if (candidates.isEmpty()) return null;
+        if (candidates.isEmpty()) {
+            // 找不到指定形状 → 兜底用最后一个
+            return elements.get(elements.size() - 1);
+        }
         if (candidates.size() == 1) return elements.get(candidates.get(0));
 
         // 多个同类元素 → 多维度评分，从 userText 提取筛选条件
@@ -321,17 +347,21 @@ public class CanvasStateService {
         return userText.contains("正上方") || userText.contains("正上面")
             || userText.contains("正下方") || userText.contains("正下面")
             || userText.contains("正左方") || userText.contains("正左面")
-            || userText.contains("正右方") || userText.contains("正右面");
+            || userText.contains("正右方") || userText.contains("正右面")
+            || userText.contains("的左边") || userText.contains("的右边")
+            || userText.contains("的上面") || userText.contains("的下面")
+            || userText.contains("的上方") || userText.contains("的下方")
+            || userText.contains("的左方") || userText.contains("的右方");
     }
 
     public List<DrawingOp> relocateNewOps(List<DrawingOp> ops, List<ElementState> elements, String userText) {
         if (elements.isEmpty()) return ops;
 
         String relDir = null;
-        if (userText.contains("正上方") || userText.contains("正上面")) relDir = "above";
-        else if (userText.contains("正下方") || userText.contains("正下面")) relDir = "below";
-        else if (userText.contains("正左方") || userText.contains("正左面")) relDir = "left";
-        else if (userText.contains("正右方") || userText.contains("正右面")) relDir = "right";
+        if (userText.contains("正上方") || userText.contains("正上面") || userText.contains("的上面") || userText.contains("的上方")) relDir = "above";
+        else if (userText.contains("正下方") || userText.contains("正下面") || userText.contains("的下面") || userText.contains("的下方")) relDir = "below";
+        else if (userText.contains("正左方") || userText.contains("正左面") || userText.contains("的左边") || userText.contains("的左方")) relDir = "left";
+        else if (userText.contains("正右方") || userText.contains("正右面") || userText.contains("的右边") || userText.contains("的右方")) relDir = "right";
         if (relDir == null) return ops;
 
         // 多维度评分找参考元素
@@ -438,6 +468,20 @@ public class CanvasStateService {
         return "中";
     }
 
+    private boolean hasPositionKeyword(String text) {
+        for (String pk : POS_KEYS) {
+            if (text.contains(pk)) return true;
+        }
+        return false;
+    }
+
+    private boolean hasColorKeyword(String text) {
+        for (String ck : COLOR_KEYS) {
+            if (text.contains(ck)) return true;
+        }
+        return false;
+    }
+
     private String toColorName(String hex) {
         if (hex == null) return "黑";
         String name = HEX_TO_NAME.get(hex);
@@ -452,7 +496,7 @@ public class CanvasStateService {
 
     // ==================== 方向匹配 ====================
 
-    /** 检测方向词。必须有参考对象（形状名或指代词）方向才有意义，否则是位置词。 */
+    /** 检测方向词。参考对象必须在方向词之前出现，否则是位置描述。 */
     private String detectDirection(String text) {
         // 排除九宫格组合位置
         if (text.contains("左上") || text.contains("左下") || text.contains("右上") || text.contains("右下"))
@@ -462,16 +506,20 @@ public class CanvasStateService {
             || text.contains("正上面") || text.contains("正下面") || text.contains("正左面") || text.contains("正右面"))
             return null;
 
-        // 必须有参考对象，否则"左/右/上/下"是位置而非方向
-        boolean hasRef = detectShape(text) != null
-            || text.contains("它") || text.contains("这个") || text.contains("那个");
-        if (!hasRef) return null;
+        // 找方向词位置
+        String dirStr = null;
+        int dirPos = -1;
+        if (text.contains("右")) { dirStr = "right"; dirPos = text.indexOf("右"); }
+        else if (text.contains("左")) { dirStr = "left"; dirPos = text.indexOf("左"); }
+        else if (text.contains("上")) { dirStr = "up"; dirPos = text.indexOf("上"); }
+        else if (text.contains("下")) { dirStr = "down"; dirPos = text.indexOf("下"); }
+        if (dirStr == null) return null;
 
-        if (text.contains("右")) return "right";
-        if (text.contains("左")) return "left";
-        if (text.contains("上")) return "up";
-        if (text.contains("下")) return "down";
-        return null;
+        // 参考对象必须在方向词前面："三角形左边的"→方向，"左边的三角形"→位置
+        String before = text.substring(0, dirPos);
+        boolean hasRefBefore = detectShape(before) != null
+            || before.contains("它") || before.contains("这个") || before.contains("那个");
+        return hasRefBefore ? dirStr : null;
     }
 
     /**

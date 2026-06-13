@@ -11,6 +11,7 @@ import com.voicedraw.model.IntentResult;
 import com.voicedraw.model.SemanticOp;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -125,7 +126,15 @@ public class CommandParserService {
         → 从画布上下文找到颜色=红的图形（如index=0是矩形），relativeTo填其形状名
         → {"type":"geometry","operations":[{"shape":"triangle","fill":true,"extra":{"relativeTo":"矩形","relativeDir":"below"}}]}
 
+        示例15（相对定位-方向词）: "在三角形的左边画一个椭圆，右边画一个矩形"
+        → "的左边/的右边"也是相对定位，必须输出 extra
+        → {"type":"geometry","operations":[
+          {"shape":"ellipse","fill":true,"extra":{"relativeTo":"三角","relativeDir":"left"}},
+          {"shape":"rect","fill":true,"extra":{"relativeTo":"三角","relativeDir":"right"}}
+        ]}
+
         注意：
+        - 出现"正上方/正下方/正左方/正右方"或"的左边/的右边/的上面/的下面"等方向描述时，必须在 extra 中输出 relativeTo 和 relativeDir
         - 参考图形可以通过形状名（"矩形"/"圆"）、指代词（"它"）、位置（"左上方那个"）、颜色（"红色的那个"）、大小（"大的那个"）、或以上任意组合来指定
         - 无论用户用什么方式描述，你都必须从画布上下文中找到对应图形，然后把它的形状名（或"它"）填入 relativeTo
         - relativeTo 只能填形状名或"它"，绝对不能填位置词/颜色词/大小词
@@ -150,12 +159,40 @@ public class CommandParserService {
     public CommandParserService(VoiceDrawProperties props) { this.props = props; }
 
     public IntentResult parse(String text, String canvasContext) {
-        try {
-            String systemPrompt = SYSTEM_PROMPT;
-            if (canvasContext != null && !canvasContext.isBlank()) {
-                systemPrompt += "\n\n当前画布上已有以下图形（index 从0开始）：\n" + canvasContext
-                    + "\n如果用户说\"它\"\"那个\"\"这个\"或指代性词语，请根据对话上下文判断指代哪个图形（通常是最近被提到或修改的那个）。无法判断时默认最后一个。";
+        String systemPrompt = buildPrompt(canvasContext);
+
+        // 第一层：单次 LLM 调用
+        IntentResult ir = callLLM(text, systemPrompt);
+        if (ir != null) return ir;
+
+        // 第二层：拆句后分别调 LLM
+        String[] parts = splitParts(text);
+        if (parts.length > 1) {
+            List<SemanticOp> allOps = new ArrayList<>();
+            for (String part : parts) {
+                IntentResult partResult = callLLM(part.trim(), systemPrompt);
+                if (partResult != null && partResult.understood()) {
+                    allOps.addAll(partResult.operations());
+                }
             }
+            if (!allOps.isEmpty()) return new IntentResult(true, null, "geometry", allOps);
+        }
+
+        // 第三层：关键词兜底
+        return fallback(text);
+    }
+
+    private String buildPrompt(String canvasContext) {
+        String prompt = SYSTEM_PROMPT;
+        if (canvasContext != null && !canvasContext.isBlank()) {
+            prompt += "\n\n当前画布上已有以下图形（index 从0开始）：\n" + canvasContext
+                + "\n如果用户说\"它\"\"那个\"\"这个\"或指代性词语，请根据对话上下文判断指代哪个图形（通常是最近被提到或修改的那个）。无法判断时默认最后一个。";
+        }
+        return prompt;
+    }
+
+    private IntentResult callLLM(String text, String systemPrompt) {
+        try {
             GenerationParam param = GenerationParam.builder()
                 .apiKey(props.getApiKey())
                 .model(props.getLlm().getModel())
@@ -173,7 +210,14 @@ public class CommandParserService {
             if (ir != null && ir.understood()) return ir;
             if (ir != null && !ir.understood()) return ir;
         } catch (Exception e) { /* fall through */ }
-        return fallback(text);
+        return null;
+    }
+
+    private String[] splitParts(String text) {
+        String[] parts = text.split("，|。|,|\\.|然后|接着|还有|再|和|及|与");
+        List<String> list = new ArrayList<>();
+        for (String p : parts) if (!p.trim().isEmpty()) list.add(p.trim());
+        return list.isEmpty() ? new String[]{text} : list.toArray(new String[0]);
     }
 
     private IntentResult fallback(String text) {
