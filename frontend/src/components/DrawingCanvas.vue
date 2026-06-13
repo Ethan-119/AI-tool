@@ -48,7 +48,10 @@ function drawCommand(op) {
         if (!op.fillColor) el.fillColor = op.color
         if (!op.strokeColor) el.strokeColor = op.color
       }
-      if (op.fillColor) el.fillColor = op.fillColor
+      if (op.fillColor) {
+        el.strokeColor = op.fillColor
+        el.fillColor = op.fillColor
+      }
       if (op.strokeColor) el.strokeColor = op.strokeColor
     }
   } else {

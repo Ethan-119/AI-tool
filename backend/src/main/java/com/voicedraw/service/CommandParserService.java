@@ -21,139 +21,40 @@ public class CommandParserService {
     private final Gson gson = new Gson();
 
     private static final String SYSTEM_PROMPT = """
-        你是一个语音绘图指令解析器。将用户的自然语言转换为 JSON 指令。
+        你是语音绘图解析器。输出JSON，格式：
 
-        画新图形时的输出格式(geometry)：
-        {
-          "understood": true,
-          "type": "geometry",
-          "operations": [{
-            "shape": "circle|rect|line|triangle|ellipse",
-            "x": "left|center|right",
-            "y": "top|middle|bottom",
-            "size": "small|medium|large",
-            "color": "颜色名",
-            "fillColor": "填充颜色（可选）",
-            "strokeColor": "描边颜色（可选）",
-            "fill": true,
-            "stroke": false
-          }]
-        }
+        geometry: {"understood":true,"type":"geometry","operations":[{"shape":"circle|rect|line|triangle|ellipse","x":"left|center|right","y":"top|middle|bottom","size":"small|medium|large","color":"颜色","fillColor":"填充色","strokeColor":"描边色","fill":true,"stroke":false}]}
+        modify:  {"understood":true,"type":"modify","operations":[{"shape":"modify","targetIndex":0,"color":"红","fillColor":"蓝"}]}
 
-        修改已有图形时的输出格式(modify)：
-        {
-          "understood": true,
-          "type": "modify",
-          "operations": [{
-            "shape": "modify",
-            "targetIndex": 0,
-            "color": "红色",
-            "fillColor": "蓝色",
-            "strokeColor": "绿色"
-          }]
-        }
-
-        === L1 基础绘图 ===
-
-        示例1: "在左上画一个红色三角形"
-        → {"type":"geometry","operations":[{"shape":"triangle","x":"left","y":"top","color":"红","fill":true}]}
-
-        示例2: "在中间画蓝色大圆，在右下画绿色小方"
-        → {"type":"geometry","operations":[
-          {"shape":"circle","x":"center","y":"middle","size":"large","color":"蓝"},
-          {"shape":"rect","x":"right","y":"bottom","size":"small","color":"绿"}
-        ]}
-
-        === L2 上下文理解和修改 ===
-
-        示例3（指代引用）: "把它涂成绿色"
-        → "它/这个/那个"的指代对象需根据对话上下文判断。通常是最近被提到或修改的图形
-        → 例如：上一轮说了"把三角形改成蓝色"，则"它"=三角形。如果上下文没有明确指向，则默认为最后一个图形（最大index）
-        → {"type":"modify","operations":[{"shape":"modify","targetIndex":根据上下文确定的index,"fillColor":"绿"}]}
-
-        示例4（形状引用）: "把三角形改成蓝色"（画布上下文会列出已有图形及其 index，从中找到三角形的 index）
-        → {"type":"modify","operations":[{"shape":"modify","targetIndex":三角形的index,"color":"蓝"}]}
-
-        示例5（复合+修改）: "在左上画红色三角，然后把三角改成蓝色"
-        → 先画三角(index=0)，再改它 → targetIndex=0
-        → {"type":"geometry","operations":[
-          {"shape":"triangle","x":"left","y":"top","color":"红","fill":true},
-          {"shape":"modify","targetIndex":0,"color":"蓝"}
-        ]}
-
-        示例6（填充+描边）: "填充红色，描边加粗"（没指定具体图形 → 改最后一个）
-        → {"type":"modify","operations":[{"shape":"modify","targetIndex":最大的index,"fillColor":"红","strokeColor":"红","stroke":true}]}
-
-        示例7（批量修改-有条件）: "把左边的都改成红色"
-        → 含"都/全部/所有"=批量，可不填 targetIndex，系统自动匹配
-        → {"type":"modify","operations":[{"shape":"modify","color":"红"}]}
-
-        示例8（批量修改-全选）: "把所有图形改成蓝色" / "把全部图形涂红"
-        → 无具体筛选条件=全选，不填 targetIndex，系统自动匹配所有图形
-        → {"type":"modify","operations":[{"shape":"modify","color":"蓝"}]}
-
-        示例9（多条件精确匹配）: "把中间的绿色圆形改成蓝色"
-        → 从上下文找"中间位置+绿色+圆形"的图形，填其 index
-        → {"type":"modify","operations":[{"shape":"modify","targetIndex":匹配的index,"color":"蓝"}]}
-
-        示例（修改-颜色指代）: "把红色的那个改成蓝色"
-        → 从上下文找到颜色=红的图形，填其 index。如有多个红色图形则结合其他条件缩小范围，无法确定时可不填 targetIndex
-        → {"type":"modify","operations":[{"shape":"modify","targetIndex":匹配的index,"color":"蓝"}]}
-
-        === L2 相对定位绘图 ===
-
-        示例10（相对定位-指定形状）: "在矩形的正下面画一个三角形"（画布上下文中有矩形，从中找到其位置）
-        → 找到矩形在上下文中的位置。正下面=水平对齐矩形、垂直在矩形下方。
-        → {"type":"geometry","operations":[{"shape":"triangle","x":"left","y":"bottom","fill":true,"extra":{"relativeTo":"矩形","relativeDir":"below"}}]}
-
-        示例11（相对定位-指代）: "在它的正上方画一个圆"（"它"=对话上下文中最近讨论的图形）
-        → 找到最后一个图形的index和位置。正上方=水平对齐、垂直在上方。
-        → {"type":"geometry","operations":[{"shape":"circle","x":"center","y":"top","fill":true,"extra":{"relativeTo":"它","relativeDir":"above"}}]}
-
-        示例12（相对定位-复合）: "在左上方画一个矩形，然后在矩形的正右方画一个三角形"
-        → 先画矩形(index=0,位置=左上)，再在矩形的正右方画三角形
-        → {"type":"geometry","operations":[
-          {"shape":"rect","x":"left","y":"top","fill":true},
-          {"shape":"triangle","x":"right","y":"top","fill":true,"extra":{"relativeTo":"矩形","relativeDir":"right"}}
-        ]}
-
-        示例13（相对定位-位置指代）: "在左上方这个图形的正下方画一个三角形"
-        → 从画布上下文找到"左上"位置的图形（如index=0是矩形），relativeTo填其形状名
-        → {"type":"geometry","operations":[{"shape":"triangle","fill":true,"extra":{"relativeTo":"矩形","relativeDir":"below"}}]}
-        → 注意：用户没指定颜色和大小，不要从参考图形复制，保持默认即可
-
-        示例14（相对定位-颜色指代）: "在红色的那个图形正下方画一个三角形"
-        → 从画布上下文找到颜色=红的图形（如index=0是矩形），relativeTo填其形状名
-        → {"type":"geometry","operations":[{"shape":"triangle","fill":true,"extra":{"relativeTo":"矩形","relativeDir":"below"}}]}
-
-        示例15（相对定位-方向词）: "在三角形的左边画一个椭圆，右边画一个矩形"
-        → "的左边/的右边"也是相对定位，必须输出 extra
-        → {"type":"geometry","operations":[
-          {"shape":"ellipse","fill":true,"extra":{"relativeTo":"三角","relativeDir":"left"}},
-          {"shape":"rect","fill":true,"extra":{"relativeTo":"三角","relativeDir":"right"}}
-        ]}
-
-        注意：
-        - 出现"正上方/正下方/正左方/正右方"或"的左边/的右边/的上面/的下面"等方向描述时，必须在 extra 中输出 relativeTo 和 relativeDir
-        - 参考图形可以通过形状名（"矩形"/"圆"）、指代词（"它"）、位置（"左上方那个"）、颜色（"红色的那个"）、大小（"大的那个"）、或以上任意组合来指定
-        - 无论用户用什么方式描述，你都必须从画布上下文中找到对应图形，然后把它的形状名（或"它"）填入 relativeTo
-        - relativeTo 只能填形状名或"它"，绝对不能填位置词/颜色词/大小词
-        - 系统会根据参考图形的实际坐标精确计算位置，不走9宫格估算
-        - 参考图形名必须能在画布上下文中找到，否则无法定位
+        示例：
+        1. "在左上画红色三角" → {"type":"geometry","operations":[{"shape":"triangle","x":"left","y":"top","color":"红","fill":true}]}
+        2. "在中间画蓝色大圆，右下画绿色小方" → {"type":"geometry","operations":[{"shape":"circle","x":"center","y":"middle","size":"large","color":"蓝"},{"shape":"rect","x":"right","y":"bottom","size":"small","color":"绿"}]}
+        3. "把它涂成绿色" → "它/这个/那个"=最近被提到/修改的图形，上下文无法判断时默认最后一个 → {"type":"modify","operations":[{"shape":"modify","targetIndex":对应index,"fillColor":"绿"}]}
+        4. "把三角形改成蓝色" → 从上下文找三角形的index → {"type":"modify","operations":[{"shape":"modify","targetIndex":对应index,"color":"蓝"}]}
+        5. "在左上画红色三角，然后把三角改成蓝色" → 画完立即修改=type仍为geometry，修改那项shape填modify → {"type":"geometry","operations":[{"shape":"triangle","x":"left","y":"top","color":"红","fill":true},{"shape":"modify","targetIndex":0,"color":"蓝"}]}
+        5b. "在中间画一个大圆，然后把它变成红色" → 同上，变成/换成/改为=modify → {"type":"geometry","operations":[{"shape":"circle","x":"center","y":"middle","size":"large","fill":true},{"shape":"modify","targetIndex":0,"color":"红"}]}
+        6. "把左边的都改成红色" → 批量可不填targetIndex → {"type":"modify","operations":[{"shape":"modify","color":"红"}]}
+        7. "把所有图形改成蓝色" → 全选不填targetIndex → {"type":"modify","operations":[{"shape":"modify","color":"蓝"}]}
+        8. "把中间的绿色圆形改成蓝色" → 多条件精确匹配 → {"type":"modify","operations":[{"shape":"modify","targetIndex":对应index,"color":"蓝"}]}
+        9. "在矩形的正下方画三角形" → 相对定位，extra必填 → {"type":"geometry","operations":[{"shape":"triangle","fill":true,"extra":{"relativeTo":"矩形","relativeDir":"below"}}]}
+        10. "在它的正上方画圆" → {"type":"geometry","operations":[{"shape":"circle","fill":true,"extra":{"relativeTo":"它","relativeDir":"above"}}]}
+        11. "在左上方画矩形，然后在矩形的正右方画三角" → {"type":"geometry","operations":[{"shape":"rect","x":"left","y":"top","fill":true},{"shape":"triangle","fill":true,"extra":{"relativeTo":"矩形","relativeDir":"right"}}]}
+        12. "在三角形的左边画椭圆，右边画矩形" → 方向词也需extra → {"type":"geometry","operations":[{"shape":"ellipse","fill":true,"extra":{"relativeTo":"三角","relativeDir":"left"}},{"shape":"rect","fill":true,"extra":{"relativeTo":"三角","relativeDir":"right"}}]}
+        13. "填充红色"（没指定图形→改最后一个）→ {"type":"modify","operations":[{"shape":"modify","targetIndex":最大的index,"fillColor":"红"}]}
+        14. "在左上方那个图形的正下方画三角" → 从上下文找"左上"位置的图形，relativeTo填其形状名 → {"type":"geometry","operations":[{"shape":"triangle","fill":true,"extra":{"relativeTo":"矩形","relativeDir":"below"}}]}
+        15. "在红色的那个图形正下方画三角" → 从上下文找颜色=红的图形，relativeTo填其形状名 → {"type":"geometry","operations":[{"shape":"triangle","fill":true,"extra":{"relativeTo":"矩形","relativeDir":"below"}}]}
 
         规则：
-        - 画新图形 → type="geometry"，包含坐标/大小/颜色，不填 targetIndex
-        - 修改已有图形（改颜色/填充/描边）→ type="modify"
-        - "它/这个/那个"的指代对象需根据对话上下文判断（最近被提到/修改的图形）。只有上下文无法判断时才默认为最后一个图形
-        - 提到具体形状名（三角/圆/椭圆/矩形/线）→ 从画布上下文查对应图形的 index。有多个同名图形时结合位置/颜色/大小缩小范围，无法确定时选最近被讨论的那个
-        - 单个图形修改 → targetIndex 必填。批量修改（含"都/全部/所有"）→ 可不填 targetIndex，系统自动匹配。无具体筛选条件时=全选所有图形
-        - 一句话含多个动作（逗号/句号/然后/接着/再/和）→ 拆成多个 operation，可混合 geometry 和 modify
-        - 抽象概念（猫/狗/花/风景）→ type="image"。模板（房子/太阳/树）→ type="template"
-        - 坐标9宫格：x=left/center/right，y=top/middle/bottom。size: small/medium/large
-        - 忽略"屏幕上""画布上""画面中"等修饰词，它们不影响坐标判断
-        - 用户没指定的属性（颜色/大小）不要推断或从参考图形复制，保持默认（黑/中）
-        - 撤销→ shape="undo"，清空→ shape="clear"
-        - 完全无法理解→ understood=false，clarification 写追问
+        - geometry=画新图形，不填targetIndex。modify=改变已有图形属性（改/变成/变为/换成/更换/调整/设置/填充/涂 + 颜色/大小/描边），shape必须填"modify"
+        - "它/这个/那个"=对话中最近被提到/修改的图形，无法判断时默认最后一个
+        - 提到形状名（三角/圆/椭圆/矩形/线）→ 从上下文查index；多个同名时结合位置/颜色/大小缩小范围
+        - 批量（都/全部/所有）→ 可不填targetIndex；无筛选条件=全选
+        - 方向描述（正上方/正下方/正左方/正右方/的左边/的右边/的上面/的下面）→ extra中必填relativeTo（形状名或"它"）和relativeDir（above/below/left/right）
+        - relativeTo只能填形状名或"它"；参考图形可以是形状/位置/颜色/大小任意方式指代，但必须翻译成形状名
+        - 多动作（逗号/句号/然后/接着/再/和）→ 拆成多个operation，可混合geometry和modify
+        - 坐标：x=left/center/right, y=top/middle/bottom。size: small/medium/large。忽略"屏幕/画布/画面"等修饰词
+        - 未指定属性不要推断或从参考复制，保持默认（黑/中）。抽象概念→image。模板→template
+        - 撤销=undo，清空=clear。无法理解→understood=false
         """;
 
     public CommandParserService(VoiceDrawProperties props) { this.props = props; }
