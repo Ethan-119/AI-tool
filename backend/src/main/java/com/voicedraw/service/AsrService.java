@@ -30,13 +30,11 @@ public class AsrService {
                 .sampleRate(props.getAsr().getSampleRate())
                 .build();
             Flowable<ByteBuffer> audioFlow = Flowable.just(ByteBuffer.wrap(audioData));
-            Flowable<RecognitionResult> results = new Recognition().streamCall(param, audioFlow);
-            StringBuilder sb = new StringBuilder();
-            results.blockingForEach(r -> {
-                if (r.getSentence() != null && r.getSentence().getText() != null)
-                    sb.append(r.getSentence().getText());
-            });
-            return sb.isEmpty() ? null : sb.toString();
+            RecognitionResult last = new Recognition().streamCall(param, audioFlow)
+                .blockingLast(null);
+            if (last != null && last.getSentence() != null
+                && last.getSentence().getText() != null)
+                return last.getSentence().getText();
         } catch (Exception ignored) {}
         return null;
     }

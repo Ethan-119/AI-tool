@@ -3,21 +3,23 @@ package com.voicedraw.controller;
 import com.google.gson.Gson;
 import com.voicedraw.model.DrawingOp;
 import com.voicedraw.model.DrawingSession;
+import com.voicedraw.model.ElementState;
 import com.voicedraw.model.IntentResult;
+import com.voicedraw.model.SemanticOp;
 import com.voicedraw.service.AsrService;
+import com.voicedraw.service.CanvasStateService;
 import com.voicedraw.service.CommandParserService;
 import com.voicedraw.service.DrawingService;
 import com.voicedraw.service.strategy.IntentStrategy;
 import com.voicedraw.service.strategy.IntentStrategyFactory;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/api/draw")
@@ -27,17 +29,17 @@ public class DrawingController {
     private final CommandParserService parserService;
     private final DrawingService drawingService;
     private final IntentStrategyFactory strategyFactory;
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final CanvasStateService canvasStateService;
     private final Gson gson = new Gson();
 
     public DrawingController(AsrService asrService, CommandParserService parserService,
                               DrawingService drawingService, IntentStrategyFactory strategyFactory,
-                              RedisTemplate<String, Object> redisTemplate) {
+                              CanvasStateService canvasStateService) {
         this.asrService = asrService;
         this.parserService = parserService;
         this.drawingService = drawingService;
         this.strategyFactory = strategyFactory;
-        this.redisTemplate = redisTemplate;
+        this.canvasStateService = canvasStateService;
     }
 
     @PostMapping(value = "/voice", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -58,13 +60,15 @@ public class DrawingController {
                     return;
                 }
 
-                // 注入画布上下文
-                String context = getCanvasContext(sessionId, canvasState);
-                IntentResult intent = parserService.parse(text, context);
-                DrawingSession session = resolveSession(sessionId);
-                int stepNum = session.getStepCount() + 1;
+                // 1. 获取结构化画布状态，格式化为 LLM 上下文
+                List<ElementState> elements = canvasStateService.getElements(sessionId);
+                String context = canvasStateService.formatContext(elements);
+                if (context == null && canvasState != null && !canvasState.isBlank()) {
+                    context = canvasState; // 首次请求兜底：用前端传来的字符串
+                }
 
-                drawingService.saveRecord(session.getSessionId(), stepNum, text, intent);
+                // 2. LLM 解析（单次调用，复合指令由 LLM 内部拆分）
+                IntentResult intent = parserService.parse(text, context);
 
                 if (!intent.understood()) {
                     send(emitter, "clarification", Map.of("text", intent.clarification()));
@@ -72,16 +76,54 @@ public class DrawingController {
                     return;
                 }
 
-                IntentStrategy strategy = strategyFactory.get(intent.type());
-                List<DrawingOp> ops = strategy.execute(intent.operations());
+                // 3. 分离 geometry / 相对定位geometry / modify 操作
+                List<SemanticOp> geomOps = new ArrayList<>();
+                List<SemanticOp> relativeGeomOps = new ArrayList<>();
+                List<SemanticOp> modOps = new ArrayList<>();
+                for (SemanticOp op : intent.operations()) {
+                    if ("modify".equals(op.shape())) {
+                        modOps.add(op);
+                    } else if (op.extra() != null && op.extra().containsKey("relativeTo")) {
+                        relativeGeomOps.add(op);
+                    } else {
+                        geomOps.add(op);
+                    }
+                }
 
-                for (DrawingOp op : ops) {
-                    send(emitter, "command", op);
+                // 4. 多维度匹配修正 modify 的 targetIndex
+                List<SemanticOp> fixedModOps = canvasStateService.fixModifyOps(modOps, elements, text);
+
+                DrawingSession session = resolveSession(sessionId);
+                int stepNum = session.getStepCount() + 1;
+                drawingService.saveRecord(session.getSessionId(), stepNum, text, intent);
+
+                // 5. 分别执行策略：普通geometry → 相对定位geometry → modify
+                List<DrawingOp> ops = new ArrayList<>();
+                if (!geomOps.isEmpty()) {
+                    IntentStrategy s = strategyFactory.get("geometry");
+                    ops.addAll(s.execute(geomOps));
+                }
+                if (!relativeGeomOps.isEmpty()) {
+                    ops.addAll(canvasStateService.executeRelativeGeometry(relativeGeomOps, elements, text));
+                }
+                if (!fixedModOps.isEmpty()) {
+                    IntentStrategy s = strategyFactory.get("modify");
+                    ops.addAll(s.execute(fixedModOps));
+                }
+
+                // 6. 后端安全网：LLM 没输出 extra 时，检测用户文本直接做相对定位
+                if (relativeGeomOps.isEmpty() && canvasStateService.hasRelativePositioning(text)) {
+                    ops = canvasStateService.relocateNewOps(ops, elements, text);
+                }
+
+                for (int i = 0; i < ops.size(); i++) {
+                    send(emitter, "command", ops.get(i));
                 }
                 send(emitter, "done", Map.of("sessionId", session.getSessionId(), "step", stepNum));
 
-                // 更新 Redis 画布快照
-                saveCanvasState(session.getSessionId(), canvasState, ops);
+                // 7. 更新 Redis 结构化状态
+                List<ElementState> updated = canvasStateService.applyOps(elements, ops);
+                canvasStateService.saveElements(session.getSessionId(), updated);
 
             } catch (Exception e) {
                 send(emitter, "error", Map.of("message", "处理失败: " + e.getMessage()));
@@ -91,22 +133,6 @@ public class DrawingController {
         }).start();
 
         return emitter;
-    }
-
-    private String getCanvasContext(String sessionId, String state) {
-        if (state != null && !state.isBlank()) return state;
-        if (sessionId != null) {
-            Object cached = redisTemplate.opsForValue().get("voice:canvas:" + sessionId);
-            return cached != null ? cached.toString() : null;
-        }
-        return null;
-    }
-
-    private void saveCanvasState(String sessionId, String state, List<DrawingOp> ops) {
-        // 根据 operations 更新画布状态快照，简化为直接存前端传来的 state
-        if (state != null && !state.isBlank()) {
-            redisTemplate.opsForValue().set("voice:canvas:" + sessionId, state, 30, TimeUnit.MINUTES);
-        }
     }
 
     private DrawingSession resolveSession(String sessionId) {

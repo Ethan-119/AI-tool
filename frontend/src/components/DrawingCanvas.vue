@@ -58,9 +58,35 @@ function drawCommand(op) {
 }
 
 function getElementsSummary() {
-  return elements.value.map((el, i) =>
-    `[${i}] ${el.type} x=${el.x?.toFixed(0)} y=${el.y?.toFixed(0)} color=${el.color} fillColor=${el.fillColor || '无'}`
-  ).join('\n')
+  return elements.value.map((el, i) => {
+    const pos = posLabel(el.x, el.y)
+    const size = sizeLabel(el.width, el.height, el.type)
+    const clr = colorLabel(el.fillColor || el.color)
+    return `[${i}] ${el.type} x=${el.x?.toFixed(0)} y=${el.y?.toFixed(0)} 位置=${pos} 大小=${size} 颜色=${clr}`
+  }).join('\n')
+}
+
+function posLabel(x, y) {
+  const h = x < 250 ? '左' : x > 550 ? '右' : '中'
+  const v = y < 200 ? '上' : y > 400 ? '下' : '间'
+  return h + v  // 左上、中间、右下 ...
+}
+
+function sizeLabel(w, h, type) {
+  const area = type === 'circle' ? Math.PI * (w/2) * (w/2) : w * h
+  if (area < 5000) return '小'
+  if (area > 30000) return '大'
+  return '中'
+}
+
+function colorLabel(hex) {
+  if (!hex) return '黑'
+  const map = {
+    '#FF0000':'红','#0000FF':'蓝','#00FF00':'绿','#FFFF00':'黄',
+    '#000000':'黑','#FFFFFF':'白','#FF8800':'橙','#8800FF':'紫',
+    '#FF88CC':'粉','#888888':'灰','#884400':'棕','#00FFFF':'青'
+  }
+  return map[hex] || hex
 }
 
 function drawImage(imgData) {

@@ -69,25 +69,92 @@ public class GeometryStrategy implements IntentStrategy {
     public List<DrawingOp> execute(List<SemanticOp> ops) {
         List<DrawingOp> result = new ArrayList<>();
         for (SemanticOp op : ops) {
-            String shape = op.shape() != null ? op.shape() : "circle";
-            double x = mapX(op.x());
-            double y = mapY(op.y());
-            double size = mapSize(op.size());
-            String c = mapColor(op.color());
-            String fc = op.fill() ? mapColor(op.fillColor() != null ? op.fillColor() : op.color()) : null;
-            String sc = op.stroke() ? mapColor(op.strokeColor() != null ? op.strokeColor() : op.color()) : c;
-
-            result.add(switch (shape) {
-                case "circle"  -> new DrawingOp("circle",  x, y, size, size, null, fc, sc, 2, null, null, -1);
-                case "rect"    -> new DrawingOp("rect",    x - size/2, y - size/2, size, size, null, fc, sc, 2, null, null, -1);
-                case "line"    -> new DrawingOp("line",    x, y, x + size, y, null, null, sc, 2, null, null, -1);
-                case "triangle"-> new DrawingOp("triangle",x, y - size/2, size, size, null, fc, sc, 2, null, null, -1);
-                case "ellipse" -> new DrawingOp("ellipse", x, y, size, size * 0.7, null, fc, sc, 2, null, null, -1);
-                case "undo"    -> new DrawingOp("undo",  0, 0, 0, 0, null, null, null, 0, null, null, -1);
-                case "clear"   -> new DrawingOp("clear", 0, 0, 0, 0, null, null, null, 0, null, null, -1);
-                default        -> new DrawingOp("circle", x, y, size, size, null, fc, sc, 2, null, null, -1);
-            });
+            result.add(createOp(op));
         }
         return result;
+    }
+
+    /** 根据 SemanticOp 创建 DrawingOp（走 9 宫格映射） */
+    private DrawingOp createOp(SemanticOp op) {
+        String shape = op.shape() != null ? op.shape() : "circle";
+        double x = mapX(op.x());
+        double y = mapY(op.y());
+        double size = mapSize(op.size());
+        String c = mapColor(op.color());
+        String fc = op.fill() ? mapColor(op.fillColor() != null ? op.fillColor() : op.color()) : null;
+        String sc = op.stroke() ? mapColor(op.strokeColor() != null ? op.strokeColor() : op.color()) : c;
+
+        return switch (shape) {
+            case "circle"  -> new DrawingOp("circle",  x, y, size, size, null, fc, sc, 2, null, null, -1);
+            case "rect"    -> new DrawingOp("rect",    x - size/2, y - size/2, size, size, null, fc, sc, 2, null, null, -1);
+            case "line"    -> new DrawingOp("line",    x, y, x + size, y, null, null, sc, 2, null, null, -1);
+            case "triangle"-> new DrawingOp("triangle",x, y - size/2, size, size, null, fc, sc, 2, null, null, -1);
+            case "ellipse" -> new DrawingOp("ellipse", x, y, size, size * 0.7, null, fc, sc, 2, null, null, -1);
+            case "undo"    -> new DrawingOp("undo",  0, 0, 0, 0, null, null, null, 0, null, null, -1);
+            case "clear"   -> new DrawingOp("clear", 0, 0, 0, 0, null, null, null, 0, null, null, -1);
+            default        -> new DrawingOp("circle", x, y, size, size, null, fc, sc, 2, null, null, -1);
+        };
+    }
+
+    /**
+     * 相对定位绘图：基于参考元素的九宫格位置和方向，用行列偏移计算目标九宫格位置。
+     * 九宫格编号：
+     *   1(左上)  2(中上)  3(右上)
+     *   4(左间)  5(中间)  6(右间)
+     *   7(左下)  8(中下)  9(右下)
+     * "正下方"=同行+1，"最下方"=同列到底。
+     *
+     * @param op          语义操作（shape, size, color 等）
+     * @param refPosition 参考元素的九宫格位置标签（如"左上"、"中间"）
+     * @param dir         方向: above/below/left/right
+     */
+    public static DrawingOp createRelativeOp(SemanticOp op, String refPosition, String dir) {
+        int col = posCol(refPosition);
+        int row = posRow(refPosition);
+
+        if ("above".equals(dir))       row = Math.max(0, row - 1);
+        else if ("below".equals(dir))  row = Math.min(2, row + 1);
+        else if ("left".equals(dir))   col = Math.max(0, col - 1);
+        else if ("right".equals(dir))  col = Math.min(2, col + 1);
+
+        double x = col == 0 ? CANVAS_W * 0.25 : col == 2 ? CANVAS_W * 0.75 : CANVAS_W * 0.5;
+        double y = row == 0 ? CANVAS_H * 0.25 : row == 2 ? CANVAS_H * 0.75 : CANVAS_H * 0.5;
+        double size = mapSize(op.size());
+        double half = size / 2;
+
+        String shape = op.shape() != null ? op.shape() : "circle";
+        String c = mapColor(op.color());
+        String fc = op.fill() ? mapColor(op.fillColor() != null ? op.fillColor() : op.color()) : null;
+        String sc = op.stroke() ? mapColor(op.strokeColor() != null ? op.strokeColor() : op.color()) : c;
+
+        DrawingOp dOp;
+        if ("rect".equals(shape)) {
+            dOp = new DrawingOp("rect", x - half, y - half, size, size, null, fc, sc, 2, null, null, -1);
+        } else if ("triangle".equals(shape)) {
+            dOp = new DrawingOp("triangle", x, y - half, size, size, null, fc, sc, 2, null, null, -1);
+        } else if ("ellipse".equals(shape)) {
+            dOp = new DrawingOp("ellipse", x, y, size, size * 0.7, null, fc, sc, 2, null, null, -1);
+        } else if ("line".equals(shape)) {
+            dOp = new DrawingOp("line", x, y, x + size, y, null, null, sc, 2, null, null, -1);
+        } else {
+            dOp = new DrawingOp("circle", x, y, size, size, null, fc, sc, 2, null, null, -1);
+        }
+        return dOp;
+    }
+
+    /** 九宫格位置 → 列号：左=0, 中=1, 右=2 */
+    public static int posCol(String pos) {
+        if (pos == null) return 1;
+        if (pos.contains("左")) return 0;
+        if (pos.contains("右")) return 2;
+        return 1;
+    }
+
+    /** 九宫格位置 → 行号：上=0, 间=1, 下=2 */
+    public static int posRow(String pos) {
+        if (pos == null) return 1;
+        if (pos.contains("上")) return 0;
+        if (pos.contains("下")) return 2;
+        return 1;
     }
 }
