@@ -66,12 +66,40 @@ public class DrawingController {
                 if (context == null && canvasState != null && !canvasState.isBlank()) {
                     context = canvasState; // 首次请求兜底：用前端传来的字符串
                 }
+                Integer lastOp = canvasStateService.getLastOpIndex(sessionId);
+                if (lastOp != null && lastOp >= 0 && context != null) {
+                    context += "最近操作：[${lastOp}]（\"它/他/这个/那个\"默认指它）".replace("${lastOp}", String.valueOf(lastOp));
+                }
+                System.out.println("[DEBUG] Canvas context for LLM:\n" + (context != null ? context : "(empty)"));
+                System.out.println("[DEBUG] User text: " + text);
 
                 // 2. LLM 解析（单次调用，复合指令由 LLM 内部拆分）
                 IntentResult intent = parserService.parse(text, context);
 
-                if (!intent.understood()) {
-                    send(emitter, "clarification", Map.of("text", intent.clarification()));
+                if (!intent.understood() || intent.operations() == null) {
+                    send(emitter, "clarification", Map.of("text",
+                        intent.clarification() != null ? intent.clarification() : "未能理解您的指令，请换个说法"));
+                    emitter.complete();
+                    return;
+                }
+
+                // 2.5 L3 类型（image / style_transfer）直接分派到对应策略
+                if ("image".equals(intent.type()) || "style_transfer".equals(intent.type())) {
+                    DrawingSession session = resolveSession(sessionId);
+                    int stepNum = session.getStepCount() + 1;
+                    drawingService.saveRecord(session.getSessionId(), stepNum, text, intent);
+
+                    send(emitter, "progress", Map.of("message", "正在生成图像..."));
+                    IntentStrategy s = strategyFactory.get(intent.type());
+                    List<DrawingOp> ops = s.execute(intent.operations());
+                    for (DrawingOp op : ops) {
+                        send(emitter, "command", op);
+                    }
+                    send(emitter, "done", Map.of("sessionId", session.getSessionId(), "step", stepNum));
+
+                    List<ElementState> updated = canvasStateService.applyOps(elements, ops);
+                    canvasStateService.saveElements(session.getSessionId(), updated);
+                    canvasStateService.saveLastOpIndex(session.getSessionId(), updated.isEmpty() ? -1 : updated.size() - 1);
                     emitter.complete();
                     return;
                 }
@@ -121,9 +149,12 @@ public class DrawingController {
                 }
                 send(emitter, "done", Map.of("sessionId", session.getSessionId(), "step", stepNum));
 
-                // 7. 更新 Redis 结构化状态
+                // 7. 更新 Redis 结构化状态 + 记录最近操作
                 List<ElementState> updated = canvasStateService.applyOps(elements, ops);
                 canvasStateService.saveElements(session.getSessionId(), updated);
+                int lastOpIdx = !fixedModOps.isEmpty() ? fixedModOps.get(fixedModOps.size() - 1).targetIndex()
+                    : !updated.isEmpty() ? updated.size() - 1 : -1;
+                canvasStateService.saveLastOpIndex(session.getSessionId(), lastOpIdx);
 
             } catch (Exception e) {
                 send(emitter, "error", Map.of("message", "处理失败: " + e.getMessage()));

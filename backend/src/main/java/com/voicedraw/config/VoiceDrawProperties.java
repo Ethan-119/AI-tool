@@ -15,7 +15,7 @@ public class VoiceDrawProperties {
 
     @Data
     public static class Llm {
-        private String model = "qwen3-max";
+        private String model = "qwen3.7-plus";
         private double temperature = 0.1;
     }
 

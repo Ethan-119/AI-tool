@@ -59,6 +59,20 @@ public class CanvasStateService {
         redisTemplate.opsForValue().set(KEY_PREFIX + sessionId, gson.toJson(elements), TTL_MINUTES, TimeUnit.MINUTES);
     }
 
+    private static final String LAST_OP_KEY = "voice:lastop:";
+
+    public void saveLastOpIndex(String sessionId, int idx) {
+        if (sessionId == null || sessionId.isBlank()) return;
+        redisTemplate.opsForValue().set(LAST_OP_KEY + sessionId, String.valueOf(idx), TTL_MINUTES, TimeUnit.MINUTES);
+    }
+
+    public Integer getLastOpIndex(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) return null;
+        Object v = redisTemplate.opsForValue().get(LAST_OP_KEY + sessionId);
+        if (v == null) return null;
+        try { return Integer.parseInt(v.toString()); } catch (NumberFormatException e) { return null; }
+    }
+
     // ==================== 上下文格式化 ====================
 
     /**

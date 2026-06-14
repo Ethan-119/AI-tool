@@ -37,12 +37,15 @@ function drawCommand(op) {
     elements.value.pop()
   } else if (op.type === 'clear') {
     elements.value = []
+  } else if (op.type === 'image') {
+    drawImage(op)
+    return
   } else if (op.type === 'modify') {
     // targetIndex 未指定时默认改最后一个
     const idx = op.targetIndex >= 0 ? op.targetIndex : elements.value.length - 1
     const el = elements.value[idx]
+    console.log('[MODIFY] idx=' + idx, 'color=' + op.color, 'fillColor=' + op.fillColor, 'el before:', JSON.stringify({type:el?.type, color:el?.color, fillColor:el?.fillColor}))
     if (el) {
-      // 只改 color 时同步更新填充色和描边色，否则改了看不见
       if (op.color) {
         el.color = op.color
         if (!op.fillColor) el.fillColor = op.color
@@ -53,6 +56,7 @@ function drawCommand(op) {
         el.fillColor = op.fillColor
       }
       if (op.strokeColor) el.strokeColor = op.strokeColor
+      console.log('[MODIFY] el after:', JSON.stringify({type:el.type, color:el.color, fillColor:el.fillColor}))
     }
   } else {
     elements.value.push({ ...op, id: Date.now() })
@@ -62,17 +66,20 @@ function drawCommand(op) {
 
 function getElementsSummary() {
   return elements.value.map((el, i) => {
-    const pos = posLabel(el.x, el.y)
+    // 用几何中心算位置标签，避免左上角坐标误导LLM
+    const cx = el.x + (el.width || 0) / 2
+    const cy = el.y + (el.height || 0) / 2
+    const pos = posLabel(cx, cy)
     const size = sizeLabel(el.width, el.height, el.type)
     const clr = colorLabel(el.fillColor || el.color)
-    return `[${i}] ${el.type} x=${el.x?.toFixed(0)} y=${el.y?.toFixed(0)} 位置=${pos} 大小=${size} 颜色=${clr}`
+    return `[${i}] ${el.type} x=${cx?.toFixed(0)} y=${cy?.toFixed(0)} 位置=${pos} 大小=${size} 颜色=${clr}`
   }).join('\n')
 }
 
 function posLabel(x, y) {
   const h = x < 250 ? '左' : x > 550 ? '右' : '中'
   const v = y < 200 ? '上' : y > 400 ? '下' : '间'
-  return h + v  // 左上、中间、右下 ...
+  return h + v
 }
 
 function sizeLabel(w, h, type) {
@@ -192,7 +199,11 @@ function fillAndStroke(el, drawPath) {
   }
 }
 
-defineExpose({ drawCommand, drawImage, getElementsSummary })
+function getSnapshot() {
+  return canvasRef.value?.toDataURL('image/jpeg', 0.7) || null
+}
+
+defineExpose({ drawCommand, drawImage, getElementsSummary, getSnapshot })
 </script>
 
 <style scoped>
