@@ -37,13 +37,15 @@ public class GeometryStrategy implements IntentStrategy {
 
     // 语义坐标映射（9 宫格）
     static double mapX(String pos) {
+        if (pos == null) return CANVAS_W * 0.5;
         return switch (pos) {
             case "left", "左"   -> CANVAS_W * 0.25;
             case "right", "右"  -> CANVAS_W * 0.75;
-            default             -> CANVAS_W * 0.5;   // 默认居中
+            default             -> CANVAS_W * 0.5;
         };
     }
     static double mapY(String pos) {
+        if (pos == null) return CANVAS_H * 0.5;
         return switch (pos) {
             case "top", "上"    -> CANVAS_H * 0.25;
             case "bottom", "下" -> CANVAS_H * 0.75;
@@ -51,10 +53,11 @@ public class GeometryStrategy implements IntentStrategy {
         };
     }
     static double mapSize(String size) {
+        if (size == null) return 100;
         return switch (size) {
             case "small", "小"  -> 60;
             case "large", "大"  -> 150;
-            default             -> 100;   // 默认中等尺寸
+            default             -> 100;
         };
     }
     static String mapColor(String name) {

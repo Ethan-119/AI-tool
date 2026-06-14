@@ -30,7 +30,7 @@ spring:
 voice-draw:
   api-key: ${DASHSCOPE_API_KEY}
   llm:
-    model: qwen3-max
+    model: qwen3.7-plus
     temperature: 0.1
   image:
     model: wanx-v1
