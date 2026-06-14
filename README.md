@@ -5,6 +5,7 @@
 ---
 ## 视频：https://www.bilibili.com/video/BV1etJA6JEBn/?vd_source=842750e3547dc6419312dc37e707a5dc
 
+# 请看指标.md 文档 计划支持完成指令 与README.md 同层级
 其中 L1 最简单 半天基本完成， L2 难度最大，一天半完成，但效果有限， L3 难度其次，关键是L1和L2 的设计，影响L3。
 ## 策略模式
 
