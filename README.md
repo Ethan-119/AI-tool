@@ -3,7 +3,7 @@
 语音控制画布。用户说话 → LLM 解析意图 → 策略执行 → Canvas 渲染。
 
 ---
-
+## 视频：https://www.bilibili.com/video/BV1etJA6JEBn/?vd_source=842750e3547dc6419312dc37e707a5dc
 ## 策略模式
 
 LLM 不直接操作画布，只输出 JSON 描述"用户想干什么"。后端根据意图类型分派到对应策略：
