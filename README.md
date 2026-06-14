@@ -5,10 +5,9 @@
 ---
 ## 视频：https://www.bilibili.com/video/BV1etJA6JEBn/?vd_source=842750e3547dc6419312dc37e707a5dc
 
-# 请看指标.md 文档 计划支持完成指令 与README.md 同层级
+## 请看指标.md 与README.md同层级，L1/L2/L3 具体支持的指令
 其中 L1 最简单 半天基本完成， L2 难度最大，一天半完成，但效果有限， L3 难度其次，关键是L1和L2 的设计，影响L3。
 ## 策略模式
-
 LLM 不直接操作画布，只输出 JSON 描述"用户想干什么"。后端根据意图类型分派到对应策略：
 
 ```
@@ -225,7 +224,33 @@ L3 在 L1/L2 的几何图形基础上扩展了图像级能力。LLM 输出语义
 
 ## 技术栈
 
-Vue 3 + Canvas API / Spring Boot 3 + MyBatis-Plus + Redis / DashScope ASR + qwen3.7-plus + 通义万相
+### 后端
+| 类别 | 技术 | 版本 |
+|------|------|------|
+| 语言 | Java | 17 |
+| 框架 | Spring Boot | 3.3.5 |
+| 构建 | Maven | — |
+| ORM | MyBatis-Plus | 3.5.8 |
+| 数据库 | MySQL | — |
+| 缓存 | Redis (Spring Data Redis) | — |
+| JSON | Gson | — |
+| 代码简化 | Lombok | — |
+
+### AI 服务（DashScope SDK 2.16.9）
+| 用途 | 模型 |
+|------|------|
+| 语音识别 (ASR) | paraformer-realtime-v1 |
+| 意图解析 (LLM) | qwen3.7-plus |
+| 图像生成 | wanx-v1（通义万相） |
+
+### 前端
+| 类别 | 技术 | 版本 |
+|------|------|------|
+| 框架 | Vue 3（Composition API） | 3.5.13 |
+| 构建 | Vite | 6 |
+| 渲染 | HTML5 Canvas API | — |
+| 录音 | MediaRecorder API + Web Audio API | — |
+| 通信 | SSE（Server-Sent Events） | — |
 
 ## 项目结构
 
